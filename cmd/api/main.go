@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/dreynaldis/pokechamps-logger/internal/auth"
 	"github.com/dreynaldis/pokechamps-logger/internal/config"
 	"github.com/dreynaldis/pokechamps-logger/internal/database"
 	"github.com/dreynaldis/pokechamps-logger/internal/handler"
@@ -25,7 +26,7 @@ func main() {
 
 	log.Println("database connected and migrations ran")
 
-	h := &handler.Handler{DB: db}
+	h := &handler.Handler{DB: db, Config: cfg}
 
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
@@ -41,6 +42,7 @@ func main() {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			if req.Method == http.MethodOptions {
 				w.WriteHeader(http.StatusNoContent)
 				return
@@ -51,9 +53,25 @@ func main() {
 
 	r.Get("/health", handler.Health)
 
+	// Public auth routes
+	r.Route("/auth", func(r chi.Router) {
+		r.Post("/register", h.Register)
+		r.Post("/login", h.Login)
+		r.Post("/refresh", h.Refresh)
+		r.Post("/logout", h.Logout)
+	})
+
+	// Protected routes
 	r.Route("/api/v1", func(r chi.Router) {
+		// Reference data -- read-only, public for now (no user data exposed)
 		r.Get("/pokemon", h.ListPokemon)
 		r.Get("/pokemon/{name}", h.GetPokemon)
+
+		// User-scoped routes (require auth)
+		r.Group(func(r chi.Router) {
+			r.Use(auth.Middleware(cfg))
+			r.Get("/auth/me", h.Me)
+		})
 	})
 
 	addr := ":" + cfg.Port
