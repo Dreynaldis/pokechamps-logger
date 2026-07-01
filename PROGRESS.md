@@ -59,9 +59,13 @@
 - [ ] `GET /auth/discord` + `GET /auth/discord/callback`
 - [ ] Upsert `oauth_accounts` row on callback; link to existing user if email matches
 
-#### Layer 4 -- Verification
-- [ ] Cross-user isolation verified (user A token rejected on user B resources)
-- [ ] `/security-review` pass on auth module
+#### Layer 4 -- Verification (done)
+- [x] Cross-user isolation verified -- /auth/me returns own data only, refresh
+  token for user A cannot produce a token for user B, wrong-secret middleware
+  blocks valid tokens
+- [x] Security review: O(n*bcrypt) refresh scan fixed -- cookie now carries
+  {rowID}:{rawHex} for O(1) indexed lookup before single bcrypt compare
+- [x] bcryptCost constant unified (was hardcoded 12 in Register handler)
 
 ### Phase 3 -- Team Builder
 - [ ] Team CRUD endpoints (`GET /teams`, `POST /teams`, `PATCH /teams/:id`, `DELETE /teams/:id`)
