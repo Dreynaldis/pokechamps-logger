@@ -355,7 +355,7 @@ Server validates: 6 slots, each with at least 1 move, ability belongs to that Po
 **Email/password:**
 1. Register: bcrypt-hash password at cost 12, insert `users` row.
 2. Login: compare hash, issue tokens on match.
-3. Access token: JWT signed with `AUTH_SECRET`, 15-minute expiry, `{sub: userId}`.
+3. Access token: JWT signed with `AUTH_SECRET`, 24-hour expiry, `{sub: userId}`.
 4. Refresh token: 32 random bytes, bcrypt-hashed, stored in `refresh_tokens`. Sent as `HttpOnly; Secure; SameSite=Strict` cookie. 30-day expiry.
 5. Refresh: read cookie, find matching hash, delete old row, issue new access token + new refresh token (rotation).
 6. Logout: delete refresh token row. Client drops access token from memory.

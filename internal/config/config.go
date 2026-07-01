@@ -8,10 +8,14 @@ import (
 )
 
 type Config struct {
-	DatabaseURL    string
-	Port           string
-	AuthSecret     string
-	FrontendOrigin string
+	DatabaseURL          string
+	Port                 string
+	AuthSecret           string
+	FrontendOrigin       string
+	GoogleClientID       string
+	GoogleClientSecret   string
+	DiscordClientID      string
+	DiscordClientSecret  string
 }
 
 func Load() *Config {
@@ -25,10 +29,14 @@ func Load() *Config {
 	}
 
 	return &Config{
-		DatabaseURL:    requireEnv("DATABASE_URL"),
-		Port:           port,
-		AuthSecret:     os.Getenv("AUTH_SECRET"),
-		FrontendOrigin: os.Getenv("FRONTEND_ORIGIN"),
+		DatabaseURL:         requireEnv("DATABASE_URL"),
+		Port:                port,
+		AuthSecret:          requireEnv("AUTH_SECRET"),
+		FrontendOrigin:      os.Getenv("FRONTEND_ORIGIN"),
+		GoogleClientID:      os.Getenv("GOOGLE_CLIENT_ID"),
+		GoogleClientSecret:  os.Getenv("GOOGLE_CLIENT_SECRET"),
+		DiscordClientID:     os.Getenv("DISCORD_CLIENT_ID"),
+		DiscordClientSecret: os.Getenv("DISCORD_CLIENT_SECRET"),
 	}
 }
 

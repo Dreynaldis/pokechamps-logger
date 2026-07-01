@@ -11,8 +11,13 @@ import (
 )
 
 func Connect(cfg *config.Config) (*gorm.DB, error) {
-	db, err := gorm.Open(postgres.Open(cfg.DatabaseURL), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
+	return Connect2(cfg.DatabaseURL)
+}
+
+// Connect2 opens a connection using a raw DSN string. Used by testutil.
+func Connect2(dsn string) (*gorm.DB, error) {
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
 	})
 	if err != nil {
 		return nil, err
@@ -37,5 +42,9 @@ func Migrate(db *gorm.DB) error {
 		&model.PokemonAbility{},
 		&model.PokemonLearnset{},
 		&model.MegaForm{},
+		// Phase 2 -- auth tables
+		&model.User{},
+		&model.OAuthAccount{},
+		&model.RefreshToken{},
 	)
 }
