@@ -1,113 +1,114 @@
-# PokeChamps Logger -- Progress & Decisions
+# PokeChamps Logger -- Progress
 
 ## Status
-**Phase:** Phase 0 complete. Next: Phase 1 (seed pipeline).
 
-### Phase 0 Checklist
+**Phase:** Phase 1 complete.
+**Next:** Phase 2 -- Auth (email/password + Google + Discord OAuth, JWT + refresh token rotation).
+
+---
+
+## Phase Checklist
+
+### Phase 0 -- Scaffold
 - [x] `.gitignore`, `.env.example`, `docker-compose.yml`
 - [x] Go module init: `github.com/dreynaldis/pokechamps-logger`
-- [x] Go deps installed: `chi/v5`, `gorm`, `gorm/driver/postgres`, `godotenv`
+- [x] Go deps: `chi/v5`, `gorm`, `gorm/driver/postgres`, `godotenv`, `goquery`
 - [x] `go build ./...` passes clean
-- [x] Files: `cmd/api/main.go`, `internal/config/config.go`, `internal/database/database.go`, `internal/handler/health.go`
-- [x] SvelteKit scaffold: `frontend/` with `adapter-static` SPA mode, `vite-plugin-pwa`, TypeScript
-- [x] `npm install` in `frontend/` -- clean on Node 20
-- [x] Docker Compose running on port 5433 (5432 reserved for local Postgres install)
+- [x] `cmd/api/main.go`, `internal/config`, `internal/database`, `internal/handler/health.go`
+- [x] SvelteKit scaffold: `frontend/` with `adapter-static` SPA mode, `vite-plugin-pwa`, TypeScript, Svelte 5 runes
+- [x] Docker Compose running on port 5433
 - [x] `go run ./cmd/api` connects to DB, `GET /health` returns 200
 
-## What's Done
-- Full design session (grill-with-docs) to lock requirements.
-- PRD written and reviewed: `docs/PRD.md`
-- Wireframes written (ASCII mockups): `docs/wireframes.md`
-- Tech spec written and reviewed: `docs/tech-spec.md`
-- Stack revised: Go + Chi + GORM (backend), SvelteKit SPA (frontend), OpenAPI codegen for type bridge.
-- Phases expanded from 3 coarse phases to 7 granular phases (Phase 0-6) with explicit exit conditions.
-- ADRs written: `docs/adr/` (001 database, 002 ORM, 003 backend, 004 frontend, 005 auth, 006 seed pipeline, 007 seed data visibility).
+### Phase 1 -- Seed Pipeline + Data Verification
+- [x] `cmd/scrape`: scrapes pokebase.app → `seed/pokebase-raw.json` (310 Pokemon, rate-limited 1 req/sec)
+- [x] `cmd/enrich`: hits PokeAPI for move and ability metadata → `seed/moves-enriched.json`, `seed/abilities-enriched.json`
+- [x] `cmd/seed`: upserts all seed data into Postgres in a single transaction (abilities → moves → pokemon → learnsets)
+- [x] GORM models: `Pokemon`, `Move`, `Ability`, `PokemonAbility`, `PokemonLearnset`, `MegaForm`, `Item`
+- [x] `GET /api/v1/pokemon` -- searchable list endpoint (ILIKE, limit param)
+- [x] `GET /api/v1/pokemon/:name` -- detail endpoint with preloaded abilities and learnset
+- [x] CORS middleware for local SvelteKit dev server
+- [x] Phase 1 verification UI: searchable list + detail panel (stats bars, abilities, moves table)
+- [x] 310 Pokemon seeded and queryable. Spot-checked: types, base stats, abilities, moves all correct.
+- [x] `dex_number` non-unique (regional forms and alternate forms share dex numbers)
+- [x] `pokemon_abilities` join: no slot or is_hidden (not meaningful for Champions)
+- [x] README with setup instructions and pokebase.app attribution
+- [x] Pushed to GitHub: `github.com/Dreynaldis/pokechamps-logger`
 
-## Key Decisions Locked
+### Phase 2 -- Auth (next)
+- [ ] `POST /auth/register` -- email + password
+- [ ] `POST /auth/login`
+- [ ] `POST /auth/refresh` -- refresh token rotation (HttpOnly cookie)
+- [ ] `POST /auth/logout`
+- [ ] `GET /auth/me`
+- [ ] Google OAuth via `markbates/goth`
+- [ ] Discord OAuth via `markbates/goth`
+- [ ] JWT middleware applied to all protected route groups
+- [ ] DB tables: `users`, `oauth_accounts`, `refresh_tokens`
+- [ ] Cross-user isolation verified (user A's token rejected on user B's resources)
+- [ ] Security review before shipping
 
-### Product
-- Web-based, PWA-compatible. Mobile is the primary logging device during matches.
-- Target user: online Pokemon Champions players. Not tournament players.
-- Auth: email + password + social login (Google, Discord).
-- Multiple teams per user; one active at a time (mirrors in-game lock before matchmaking).
-- Battle format: doubles (2v2), 6 registered, bring 4, 2 lead + 2 back.
+### Phase 3 -- Team Builder
+- [ ] Team CRUD endpoints (`GET /teams`, `POST /teams`, `PATCH /teams/:id`, `DELETE /teams/:id`)
+- [ ] `POST /teams/:id/activate` with transaction (deactivate all others)
+- [ ] DB tables: `teams`, `team_slots`, `team_slot_moves`
+- [ ] Auto-save: localStorage write (300ms debounce) + server sync (1500ms debounce)
+- [ ] SvelteKit team builder UI: 6 slots, species/ability/item/move autocomplete
+- [ ] Active team selection UI
 
-### Team Builder
-- Each Pokemon slot: species, ability, held item, nature, training points, up to 4 moves.
-- Minimum to save: 6 Pokemon each with at least 1 move. Held item and full 4 moves not required.
-- Mega form is not a separate field -- it is derived from the held mega stone (e.g. Charizard + Charizardite Y = Mega Charizard Y). Mega eligibility implied by species.
+### Phase 4 -- Match Logger
+- [ ] Match CRUD: `POST /matches`, `POST /matches/:id/pick-phase`, `POST /matches/:id/turns`, `POST /matches/:id/end`
+- [ ] DB tables: `matches`, `match_pick_phase`, `match_enemy_pokemon`, `turns`, `turn_actions`, `hp_events`, `secondary_effects`
+- [ ] Auto-save: turn submissions immediate (no debounce)
+- [ ] Mid-match detection on app boot (localStorage `match-active` + server verify)
+- [ ] SvelteKit pick phase UI + turn logger UI
+- [ ] Resume banner for in-progress matches
 
-### Battle Logger
-- No separate Turn 0. Leads for both sides are entered at the start of Turn 1.
-- Pick phase: user selects their 4 from active team's 6. Enemy's 6 entry is optional (time-pressured).
-- Turn 1+: up to 4 actions per turn (2 per side, priority-ordered).
-- Per action: move OR switch -- mutually exclusive. Pivot moves (Flip Turn, Volt Switch, U-turn, Parting Shot) are logged as a move; the forced switch-in is a secondary effect prompt.
-- Enemy also has a switch action (not move-only).
-- Every HP-related event is a separate discrete entry (primary damage, recoil, contact ability damage, etc.) -- each prompts "which Pokemon, how much HP% lost."
-- Secondary effects prompted only when the move/ability/item has them.
-- Match ends: win / loss / concede. Concede stored as loss in history list.
+### Phase 5 -- Match History
+- [ ] `GET /matches` paginated list
+- [ ] `GET /matches/:id` full detail
+- [ ] Match list UI: team summary, result badge
+- [ ] Match detail UI: pick phase + turn-by-turn replay
 
-### UI / UX
-- Color convention: blue border = your Pokemon, red border = enemy Pokemon. Applies everywhere (slots, action lines in match detail).
-- Turn logger layout: `[bench small] [active big] [action buttons]` per row, mirrored for enemy side. Center divider separates the two sides.
-- Match history card: your team (blue icons) | VS | enemy team (red icons) + VICTORY/DEFEAT badge.
-- Action lines in match detail: `[B: Charizard] → Air Slash → [R: Landorus-T]`
+### Phase 6 -- PWA + Mobile Hardening
+- [ ] PWA manifest + service worker (vite-plugin-pwa)
+- [ ] Tested on real mid-range Android device
+- [ ] Full turn logged in under 20 seconds
+- [ ] Installable as PWA
 
-### Tech Stack (decided in tech spec)
-- Frontend: SvelteKit (SPA mode, SSR disabled) + vite-plugin-pwa.
-- Backend: Go + Chi (HTTP router) + GORM.
-- Database: PostgreSQL. JSONB used for flexible columns (training_points, secondary_effects.detail, pokemon.stats, pokemon.types).
-- Auth: golang-jwt (JWT access token 15 min) + markbates/goth (Google + Discord OAuth) + refresh token (30 days, HttpOnly cookie, rotated on use).
-- Autocomplete: PostgreSQL `pg_trgm` GIN index -- no separate search service needed at 310 Pokemon scale.
-- Type bridge: swaggo generates OpenAPI spec from Go annotations; openapi-typescript generates TypeScript types for the SvelteKit frontend.
+---
 
-### Data Sources
-- Pokemon learnsets, abilities, move stats (power/accuracy/pp): pokebase.app scrape (310 Pokemon).
-- Move metadata (priority, target, secondary effect flags, effect_chance): PokeAPI.
-- Champions override layer: `seed/champions-overrides.json` -- manually maintained each patch cycle (~monthly).
-- Fallback if pokebase data unavailable: free-text move entry (no filtering).
-- Pokebase.app: no contact method found (no email or Discord). Proceeding with a rate-limited scrape (1 req/sec); credit them in the app footer.
-- Seed JSON files (`seed/*.json`) are gitignored -- not committed to the repo. Production DB is the durable snapshot.
+## Key Decisions
 
-### Database
-- PostgreSQL. Relational schema for all structured data; JSONB only where schema is genuinely variable.
-- Match data is private per user. No sharing in v1.
-- No automatic expiry in v1. Retention policy revisited once storage costs are known.
+| Decision | Choice | ADR |
+|---|---|---|
+| Database | PostgreSQL | 001 |
+| ORM | GORM | 002 |
+| Backend | Go + Chi | 003 |
+| Frontend | SvelteKit (SPA mode) | 004 |
+| Auth | JWT + refresh token rotation | 005 |
+| Seed pipeline | scrape + enrich + override layer | 006 |
+| Seed data visibility | gitignored JSON files | 007 |
+| Client persistence | localStorage buffer + server sync | 008 |
 
-### Performance
-- Autocomplete search: results within 100ms per keystroke via pg_trgm GIN index.
-- Turn input target: full turn logged under 20 seconds on mobile.
-- Validated on mid-range Android hardware before hardening.
+---
 
 ## Open Questions
 
-| Question | Status |
+| Question | Blocking |
 |---|---|
-| Hosting provider (Render, Railway, Fly.io, VPS) | Open -- not blocking Phase 1-2 |
-| `training_points` exact schema | Open -- ship as free JSONB, tighten once Champions UI is confirmed |
-| Ability slot data from pokebase.app | Open -- check during scrape; fallback to PokeAPI ability list |
-| Refresh token: fixed 30-day TTL vs sliding window | Open -- ship fixed TTL first |
-| `our_picks` lead/back role: store in pick phase or derive from turn 1 | Open -- needs decision before pick-phase endpoint is implemented |
-| Retention policy | Open -- no auto-expiry in v1, revisit post-launch |
+| Hosting provider (Render, Railway, Fly.io, VPS) | Not blocking Phase 1-2 |
+| `training_points` exact schema | Not blocking -- ship as JSONB, tighten later |
+| Refresh token: fixed 30-day TTL vs sliding window | Not blocking -- fixed TTL first |
+| `our_picks` lead/back role: store in pick phase or derive from turn 1 | Blocks Phase 4 pick-phase endpoint |
 
-## What's Next (in order)
+---
 
-1. **Phase 0** -- repo scaffold: Go module, SvelteKit init, Docker Compose, DB connection, first migration, `/health` endpoint.
-3. **Phase 1** -- seed pipeline: scrape pokebase.app, enrich from PokeAPI, apply overrides, load DB, verify data.
-4. **Phase 2** -- auth: email/password + Google + Discord OAuth, JWT + refresh token rotation.
-5. **Phase 3** -- team builder: CRUD endpoints + SvelteKit team builder UI.
-6. **Phase 4** -- match logging: pick phase, turn logger, match-end endpoints + UI.
-7. **Phase 5** -- match history: list + detail views.
-8. **Phase 6** -- PWA hardening: manifest, service worker, mobile performance validation.
+## Docs
 
-## Post-MVP (explicitly deferred)
-- Visual health bar / damage bar in match detail (data already collected via HP% events).
-- Team stats: win rate, most-used leads, most-encountered enemy (threshold TBD).
-- Speed tuning and stat distribution review tools.
-- Export or share match logs.
-
-## Files
-- `docs/PRD.md` -- full product requirements document.
-- `docs/wireframes.md` -- ASCII mockups for all key screens.
-- `docs/tech-spec.md` -- data model, API contracts, auth flow, tech stack decisions.
-- `docs/adr/` -- ADRs (none yet -- to be written after tech spec review).
+| File | Purpose |
+|---|---|
+| `docs/PRD.md` | Product requirements |
+| `docs/wireframes.md` | ASCII UI mockups |
+| `docs/tech-spec.md` | Data model, API contracts, auth flow, stack |
+| `docs/design-system.md` | Color tokens, typography, animation rules, component conventions |
+| `docs/adr/` | One ADR per major architectural decision (001-008) |

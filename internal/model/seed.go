@@ -5,7 +5,7 @@ import "gorm.io/datatypes"
 // Pokemon is a Champions species (310 total).
 type Pokemon struct {
 	ID          string         `gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
-	DexNumber   int            `gorm:"uniqueIndex;not null"`
+	DexNumber   int            `gorm:"index;not null"`
 	Name        string         `gorm:"uniqueIndex;not null"` // lowercase-hyphenated slug
 	DisplayName string         `gorm:"not null"`
 	SpriteURL   string
