@@ -8,14 +8,15 @@ import (
 )
 
 type Config struct {
-	DatabaseURL          string
-	Port                 string
-	AuthSecret           string
-	FrontendOrigin       string
-	GoogleClientID       string
-	GoogleClientSecret   string
-	DiscordClientID      string
-	DiscordClientSecret  string
+	DatabaseURL         string
+	Port                string
+	AuthSecret          string
+	BaseURL             string // used to construct OAuth callback URLs
+	FrontendOrigin      string
+	GoogleClientID      string
+	GoogleClientSecret  string
+	DiscordClientID     string
+	DiscordClientSecret string
 }
 
 func Load() *Config {
@@ -28,11 +29,22 @@ func Load() *Config {
 		port = "8080"
 	}
 
+	baseURL := os.Getenv("BASE_URL")
+	if baseURL == "" {
+		baseURL = "http://localhost:" + port
+	}
+
+	frontendOrigin := os.Getenv("FRONTEND_ORIGIN")
+	if frontendOrigin == "" {
+		frontendOrigin = "http://localhost:5173"
+	}
+
 	return &Config{
 		DatabaseURL:         requireEnv("DATABASE_URL"),
 		Port:                port,
 		AuthSecret:          requireEnv("AUTH_SECRET"),
-		FrontendOrigin:      os.Getenv("FRONTEND_ORIGIN"),
+		BaseURL:             baseURL,
+		FrontendOrigin:      frontendOrigin,
 		GoogleClientID:      os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret:  os.Getenv("GOOGLE_CLIENT_SECRET"),
 		DiscordClientID:     os.Getenv("DISCORD_CLIENT_ID"),

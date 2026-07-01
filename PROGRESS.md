@@ -34,18 +34,34 @@
 - [x] README with setup instructions and pokebase.app attribution
 - [x] Pushed to GitHub: `github.com/Dreynaldis/pokechamps-logger`
 
-### Phase 2 -- Auth (next)
-- [ ] `POST /auth/register` -- email + password
-- [ ] `POST /auth/login`
-- [ ] `POST /auth/refresh` -- refresh token rotation (HttpOnly cookie)
-- [ ] `POST /auth/logout`
-- [ ] `GET /auth/me`
-- [ ] Google OAuth via `markbates/goth`
-- [ ] Discord OAuth via `markbates/goth`
-- [ ] JWT middleware applied to all protected route groups
-- [ ] DB tables: `users`, `oauth_accounts`, `refresh_tokens`
-- [ ] Cross-user isolation verified (user A's token rejected on user B's resources)
-- [ ] Security review before shipping
+### Phase 2 -- Auth (in progress)
+
+#### Layer 1 -- Foundation (done)
+- [x] Deps: `golang-jwt/jwt/v5`, `markbates/goth`, `go-playground/validator/v10`, `stretchr/testify`
+- [x] Models: `User`, `OAuthAccount`, `RefreshToken` added to AutoMigrate
+- [x] Config: `AUTH_SECRET` is now required at startup; OAuth client fields wired
+- [x] `internal/testutil/db.go`: rolled-back transaction helper for integration tests
+
+#### Layer 2 -- Email/password + JWT (done, tests pending)
+- [x] `POST /auth/register` -- bcrypt hash, create user, issue tokens
+- [x] `POST /auth/login` -- compare hash, issue tokens; same error for wrong email/password
+- [x] `POST /auth/refresh` -- bcrypt-compare cookie against DB, rotate on match
+- [x] `POST /auth/logout` -- delete refresh token row, clear cookie
+- [x] `GET /api/v1/auth/me` -- returns user from JWT context
+- [x] `internal/auth/token.go` -- IssueTokens, ParseAccessToken, cookie helpers
+- [x] `internal/auth/middleware.go` -- JWT middleware, injects userID into context
+- [ ] Integration tests: register → login → refresh → logout cycle
+- [ ] Integration tests: duplicate email rejection, wrong password, missing token
+
+#### Layer 3 -- OAuth (next)
+- [ ] Goth provider setup (Google + Discord) in `cmd/api/main.go`
+- [ ] `GET /auth/google` + `GET /auth/google/callback`
+- [ ] `GET /auth/discord` + `GET /auth/discord/callback`
+- [ ] Upsert `oauth_accounts` row on callback; link to existing user if email matches
+
+#### Layer 4 -- Verification
+- [ ] Cross-user isolation verified (user A token rejected on user B resources)
+- [ ] `/security-review` pass on auth module
 
 ### Phase 3 -- Team Builder
 - [ ] Team CRUD endpoints (`GET /teams`, `POST /teams`, `PATCH /teams/:id`, `DELETE /teams/:id`)
