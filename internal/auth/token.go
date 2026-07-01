@@ -3,7 +3,9 @@ package auth
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/dreynaldis/pokechamps-logger/internal/config"
@@ -64,9 +66,11 @@ func IssueTokens(w http.ResponseWriter, db *gorm.DB, cfg *config.Config, userID 
 		return "", err
 	}
 
+	// Cookie value encodes the row ID for O(1) DB lookup on refresh/logout,
+	// plus the raw token for the single bcrypt comparison. Format: {id}:{rawHex}
 	http.SetCookie(w, &http.Cookie{
 		Name:     refreshCookie,
-		Value:    rawHex,
+		Value:    rt.ID + ":" + rawHex,
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   true,
@@ -77,13 +81,19 @@ func IssueTokens(w http.ResponseWriter, db *gorm.DB, cfg *config.Config, userID 
 	return accessToken, nil
 }
 
-// ReadRefreshCookie returns the raw refresh token value from the request cookie.
-func ReadRefreshCookie(r *http.Request) (string, error) {
+// ParseRefreshCookie splits the cookie into (tokenID, rawHex).
+// Cookie format is "{uuid}:{64-char hex}" -- the ID enables O(1) DB lookup
+// before the single bcrypt comparison.
+func ParseRefreshCookie(r *http.Request) (tokenID, raw string, err error) {
 	c, err := r.Cookie(refreshCookie)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	return c.Value, nil
+	parts := strings.SplitN(c.Value, ":", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", fmt.Errorf("malformed refresh cookie")
+	}
+	return parts[0], parts[1], nil
 }
 
 // ClearRefreshCookie overwrites the cookie with an expired one.

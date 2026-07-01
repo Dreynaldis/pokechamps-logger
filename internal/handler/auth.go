@@ -14,6 +14,8 @@ import (
 	"gorm.io/gorm"
 )
 
+const bcryptCost = 12
+
 var validate = validator.New()
 
 // Register handles POST /auth/register
@@ -31,7 +33,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(body.Password), 12)
+	hash, err := bcrypt.GenerateFromPassword([]byte(body.Password), bcryptCost)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -116,32 +118,27 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 // Refresh handles POST /auth/refresh
 func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
-	raw, err := auth.ReadRefreshCookie(r)
+	tokenID, raw, err := auth.ParseRefreshCookie(r)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "missing refresh token")
 		return
 	}
 
-	// Find all non-expired tokens and bcrypt-compare -- there's typically only 1 per device
-	var candidates []model.RefreshToken
-	h.DB.Where("expires_at > ?", time.Now()).Find(&candidates)
-
-	var matched *model.RefreshToken
-	for i := range candidates {
-		if bcrypt.CompareHashAndPassword([]byte(candidates[i].TokenHash), []byte(raw)) == nil {
-			matched = &candidates[i]
-			break
-		}
+	// O(1): look up the specific row by ID, then one bcrypt compare
+	var rt model.RefreshToken
+	if err := h.DB.Where("id = ? AND expires_at > ?", tokenID, time.Now()).First(&rt).Error; err != nil {
+		writeError(w, http.StatusUnauthorized, "invalid refresh token")
+		return
 	}
-	if matched == nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(rt.TokenHash), []byte(raw)); err != nil {
 		writeError(w, http.StatusUnauthorized, "invalid refresh token")
 		return
 	}
 
 	// Rotate -- delete old, issue new
-	h.DB.Delete(matched)
+	h.DB.Delete(&rt)
 
-	accessToken, err := auth.IssueTokens(w, h.DB, h.Config, matched.UserID)
+	accessToken, err := auth.IssueTokens(w, h.DB, h.Config, rt.UserID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not issue tokens")
 		return
@@ -152,20 +149,17 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 
 // Logout handles POST /auth/logout
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
-	raw, err := auth.ReadRefreshCookie(r)
+	tokenID, raw, err := auth.ParseRefreshCookie(r)
 	if err != nil {
 		// No cookie -- already logged out
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 
-	var candidates []model.RefreshToken
-	h.DB.Where("expires_at > ?", time.Now()).Find(&candidates)
-
-	for i := range candidates {
-		if bcrypt.CompareHashAndPassword([]byte(candidates[i].TokenHash), []byte(raw)) == nil {
-			h.DB.Delete(&candidates[i])
-			break
+	var rt model.RefreshToken
+	if err := h.DB.Where("id = ? AND expires_at > ?", tokenID, time.Now()).First(&rt).Error; err == nil {
+		if bcrypt.CompareHashAndPassword([]byte(rt.TokenHash), []byte(raw)) == nil {
+			h.DB.Delete(&rt)
 		}
 	}
 
