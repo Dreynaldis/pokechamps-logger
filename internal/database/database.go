@@ -46,5 +46,9 @@ func Migrate(db *gorm.DB) error {
 		&model.User{},
 		&model.OAuthAccount{},
 		&model.RefreshToken{},
+		// Phase 3 -- team builder tables
+		&model.Team{},
+		&model.TeamSlot{},
+		&model.TeamSlotMove{},
 	)
 }

@@ -78,6 +78,14 @@ func main() {
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Middleware(cfg))
 			r.Get("/auth/me", h.Me)
+
+			// Teams
+			r.Get("/teams", h.ListTeams)
+			r.Post("/teams", h.CreateTeam)
+			r.Get("/teams/{id}", h.GetTeam)
+			r.Patch("/teams/{id}", h.PatchTeam)
+			r.Delete("/teams/{id}", h.DeleteTeam)
+			r.Post("/teams/{id}/activate", h.ActivateTeam)
 		})
 	})
 

@@ -64,6 +64,7 @@ func (h *Handler) GetPokemon(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type abilityOut struct {
+		ID                 string `json:"id"`
 		Name               string `json:"name"`
 		DisplayName        string `json:"display_name"`
 		ShortEffect        string `json:"short_effect"`
@@ -71,6 +72,7 @@ func (h *Handler) GetPokemon(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type moveOut struct {
+		ID                 string `json:"id"`
 		Name               string `json:"name"`
 		DisplayName        string `json:"display_name"`
 		Type               string `json:"type"`
@@ -97,6 +99,7 @@ func (h *Handler) GetPokemon(w http.ResponseWriter, r *http.Request) {
 	abilities := make([]abilityOut, len(p.PokemonAbilities))
 	for i, pa := range p.PokemonAbilities {
 		abilities[i] = abilityOut{
+			ID:                 pa.Ability.ID,
 			Name:               pa.Ability.Name,
 			DisplayName:        pa.Ability.DisplayName,
 			ShortEffect:        pa.Ability.ShortEffect,
@@ -107,6 +110,7 @@ func (h *Handler) GetPokemon(w http.ResponseWriter, r *http.Request) {
 	moves := make([]moveOut, len(p.Learnset))
 	for i, ls := range p.Learnset {
 		moves[i] = moveOut{
+			ID:                 ls.Move.ID,
 			Name:               ls.Move.Name,
 			DisplayName:        ls.Move.DisplayName,
 			Type:               ls.Move.Type,
