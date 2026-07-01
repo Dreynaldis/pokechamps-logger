@@ -33,7 +33,7 @@ func (h *Handler) OAuthCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, err := h.upsertOAuthUser(gothUser)
+	userID, err := h.UpsertOAuthUser(gothUser)
 	if err != nil {
 		http.Redirect(w, r, h.Config.FrontendOrigin+"/?error=oauth_failed", http.StatusFound)
 		return
@@ -52,7 +52,7 @@ func (h *Handler) OAuthCallback(w http.ResponseWriter, r *http.Request) {
 // single transaction. If the oauth_accounts row already exists, just returns
 // the associated user ID. If the email is already registered (email/password
 // account), links it rather than creating a duplicate user.
-func (h *Handler) upsertOAuthUser(gothUser goth.User) (string, error) {
+func (h *Handler) UpsertOAuthUser(gothUser goth.User) (string, error) {
 	var userID string
 
 	err := h.DB.Transaction(func(tx *gorm.DB) error {
