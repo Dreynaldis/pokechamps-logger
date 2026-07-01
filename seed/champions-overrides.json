@@ -1,0 +1,49 @@
+{
+  "_comment": "Manually maintained. Updated each Champions patch cycle (~monthly). See ADR 006.",
+  "move_patches": [
+    { "name": "flip-turn",    "patch": { "is_pivot": true } },
+    { "name": "volt-switch",  "patch": { "is_pivot": true } },
+    { "name": "u-turn",       "patch": { "is_pivot": true } },
+    { "name": "parting-shot", "patch": { "is_pivot": true } }
+  ],
+  "learnset_additions": [],
+  "learnset_removals": [],
+  "ability_patches": [
+    { "name": "levitate",          "patch": { "grants_immunity_type": "ground" } },
+    { "name": "volt-absorb",       "patch": { "grants_immunity_type": "electric" } },
+    { "name": "motor-drive",       "patch": { "grants_immunity_type": "electric" } },
+    { "name": "lightning-rod",     "patch": { "grants_immunity_type": "electric" } },
+    { "name": "water-absorb",      "patch": { "grants_immunity_type": "water" } },
+    { "name": "storm-drain",       "patch": { "grants_immunity_type": "water" } },
+    { "name": "flash-fire",        "patch": { "grants_immunity_type": "fire" } },
+    { "name": "sap-sipper",        "patch": { "grants_immunity_type": "grass" } },
+    { "name": "earth-eater",       "patch": { "grants_immunity_type": "ground" } },
+    { "name": "well-baked-body",   "patch": { "grants_immunity_type": "fire" } }
+  ],
+  "mega_forms": [
+    { "base_pokemon": "charizard",  "item": "charizardite-x", "form_name": "Mega Charizard X", "sprite_url": "" },
+    { "base_pokemon": "charizard",  "item": "charizardite-y", "form_name": "Mega Charizard Y", "sprite_url": "" },
+    { "base_pokemon": "venusaur",   "item": "venusaurite",    "form_name": "Mega Venusaur",    "sprite_url": "" },
+    { "base_pokemon": "blastoise",  "item": "blastoisinite",  "form_name": "Mega Blastoise",   "sprite_url": "" },
+    { "base_pokemon": "gardevoir",  "item": "gardevoirite",   "form_name": "Mega Gardevoir",   "sprite_url": "" },
+    { "base_pokemon": "mawile",     "item": "mawilite",       "form_name": "Mega Mawile",      "sprite_url": "" },
+    { "base_pokemon": "kangaskhan", "item": "kangaskhanite",  "form_name": "Mega Kangaskhan",  "sprite_url": "" },
+    { "base_pokemon": "aerodactyl", "item": "aerodactylite",  "form_name": "Mega Aerodactyl",  "sprite_url": "" },
+    { "base_pokemon": "gengar",     "item": "gengarite",      "form_name": "Mega Gengar",      "sprite_url": "" },
+    { "base_pokemon": "tyranitar",  "item": "tyranitarite",   "form_name": "Mega Tyranitar",   "sprite_url": "" },
+    { "base_pokemon": "sableye",    "item": "sablenite",      "form_name": "Mega Sableye",     "sprite_url": "" },
+    { "base_pokemon": "metagross",  "item": "metagrossite",   "form_name": "Mega Metagross",   "sprite_url": "" },
+    { "base_pokemon": "sceptile",   "item": "sceptilite",     "form_name": "Mega Sceptile",    "sprite_url": "" },
+    { "base_pokemon": "blaziken",   "item": "blazikenite",    "form_name": "Mega Blaziken",    "sprite_url": "" },
+    { "base_pokemon": "swampert",   "item": "swampertite",    "form_name": "Mega Swampert",    "sprite_url": "" },
+    { "base_pokemon": "gardevoir",  "item": "gardevoirite",   "form_name": "Mega Gardevoir",   "sprite_url": "" },
+    { "base_pokemon": "dragonite",  "item": "dragonite-mega", "form_name": "Mega Dragonite",   "sprite_url": "" }
+  ],
+  "items": [
+    { "name": "light-clay",  "patch": { "field_effect_duration": 3 } },
+    { "name": "damp-rock",   "patch": { "field_effect_duration": 3 } },
+    { "name": "heat-rock",   "patch": { "field_effect_duration": 3 } },
+    { "name": "icy-rock",    "patch": { "field_effect_duration": 3 } },
+    { "name": "smooth-rock", "patch": { "field_effect_duration": 3 } }
+  ]
+}

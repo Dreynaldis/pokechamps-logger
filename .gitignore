@@ -1,0 +1,27 @@
+# Go binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Seed data -- scraped output, not committed (see ADR 007)
+seed/*.json
+!seed/champions-overrides.json
+
+# Environment -- never commit secrets
+.env
+
+# SvelteKit
+frontend/node_modules/
+frontend/.svelte-kit/
+frontend/build/
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+seed/debug/
