@@ -74,6 +74,7 @@ func main() {
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/pokemon", h.ListPokemon)
 		r.Get("/pokemon/{name}", h.GetPokemon)
+		r.Get("/items", h.ListItems)
 
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Middleware(cfg))

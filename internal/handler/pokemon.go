@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/dreynaldis/pokechamps-logger/internal/model"
 	"github.com/go-chi/chi/v5"
@@ -13,9 +14,12 @@ import (
 func (h *Handler) ListPokemon(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
 	limit := 20
+	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 && l <= 300 {
+		limit = l
+	}
 
 	var pokemon []model.Pokemon
-	query := h.DB.Select("id, name, display_name, types, sprite_url")
+	query := h.DB.Select("id, name, display_name, types, sprite_url").Where("name NOT LIKE ?", "%-mega%")
 	if q != "" {
 		query = query.Where("display_name ILIKE ?", "%"+q+"%")
 	}
@@ -40,6 +44,50 @@ func (h *Handler) ListPokemon(w http.ResponseWriter, r *http.Request) {
 			DisplayName: p.DisplayName,
 			Types:       json.RawMessage(p.Types),
 			SpriteURL:   p.SpriteURL,
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+// ListItems handles GET /api/v1/items?q=&limit=
+// Returns a searchable list for the held-item picker UI.
+func (h *Handler) ListItems(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query().Get("q")
+	limit := 200
+	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 && l <= 200 {
+		limit = l
+	}
+
+	var items []model.Item
+	query := h.DB.Select("id, name, display_name, category, short_effect, sprite_url")
+	if q != "" {
+		query = query.Where("display_name ILIKE ?", "%"+q+"%")
+	}
+	if err := query.Limit(limit).Order("display_name").Find(&items).Error; err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	type summary struct {
+		ID          string `json:"id"`
+		Name        string `json:"name"`
+		DisplayName string `json:"display_name"`
+		Category    string `json:"category"`
+		ShortEffect string `json:"short_effect"`
+		SpriteURL   string `json:"sprite_url"`
+	}
+
+	result := make([]summary, len(items))
+	for i, it := range items {
+		result[i] = summary{
+			ID:          it.ID,
+			Name:        it.Name,
+			DisplayName: it.DisplayName,
+			Category:    it.Category,
+			ShortEffect: it.ShortEffect,
+			SpriteURL:   it.SpriteURL,
 		}
 	}
 

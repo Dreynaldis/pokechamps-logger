@@ -37,7 +37,7 @@
     { "base_pokemon": "blaziken",   "item": "blazikenite",    "form_name": "Mega Blaziken",    "sprite_url": "" },
     { "base_pokemon": "swampert",   "item": "swampertite",    "form_name": "Mega Swampert",    "sprite_url": "" },
     { "base_pokemon": "gardevoir",  "item": "gardevoirite",   "form_name": "Mega Gardevoir",   "sprite_url": "" },
-    { "base_pokemon": "dragonite",  "item": "dragonite-mega", "form_name": "Mega Dragonite",   "sprite_url": "" }
+    { "base_pokemon": "dragonite",  "item": "dragoninite",    "form_name": "Mega Dragonite",   "sprite_url": "" }
   ],
   "items": [
     { "name": "light-clay",  "patch": { "field_effect_duration": 3 } },

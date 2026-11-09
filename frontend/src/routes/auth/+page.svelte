@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import { loginWithToken } from '$lib/auth.svelte.js';
 	import { BASE } from '$lib/api.js';
 
@@ -25,7 +26,7 @@
 				return;
 			}
 			loginWithToken(data.access_token, data.user);
-			window.location.href = '/teams';
+			goto('/teams');
 		} catch (e) {
 			error = String(e);
 		} finally {

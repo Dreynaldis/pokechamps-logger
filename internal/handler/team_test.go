@@ -151,11 +151,12 @@ func TestTeamCRUD(t *testing.T) {
 		body := map[string]any{
 			"slots": []map[string]any{
 				{
-					"slot":       1,
-					"pokemon_id": fx.pokemonID,
-					"ability_id": fx.abilityID,
-					"nature":     "Jolly",
-					"moves":      []map[string]any{{"slot": 1, "move_id": fx.moveID}},
+					"slot":            1,
+					"pokemon_id":      fx.pokemonID,
+					"ability_id":      fx.abilityID,
+					"nature":          "Jolly",
+					"training_points": map[string]any{"hp": 0, "attack": 32, "defense": 0, "sp_atk": 0, "sp_def": 2, "speed": 32},
+					"moves":           []map[string]any{{"slot": 1, "move_id": fx.moveID}},
 				},
 			},
 		}
@@ -169,6 +170,10 @@ func TestTeamCRUD(t *testing.T) {
 		assert.Equal(t, float64(1), slot["slot"])
 		assert.Equal(t, "Jolly", slot["nature"])
 		assert.NotNil(t, slot["ability"])
+		tp := slot["training_points"].(map[string]any)
+		assert.Equal(t, float64(32), tp["attack"])
+		assert.Equal(t, float64(32), tp["speed"])
+		assert.Equal(t, float64(2), tp["sp_def"])
 		moves := slot["moves"].([]any)
 		require.Len(t, moves, 1)
 		assert.Equal(t, float64(1), moves[0].(map[string]any)["slot"])
@@ -294,6 +299,33 @@ func TestTeamValidation(t *testing.T) {
 		body := map[string]any{"slots": []map[string]any{{"slot": 1, "pokemon_id": ""}}}
 		w := teamRequest(t, h.PatchTeam, http.MethodPatch, teamID, userID, body)
 		assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
+	})
+
+	t.Run("training point over 32 on a single stat returns 422", func(t *testing.T) {
+		body := map[string]any{"slots": []map[string]any{{
+			"slot": 1, "pokemon_id": fx.pokemonID,
+			"training_points": map[string]any{"hp": 0, "attack": 33, "defense": 0, "sp_atk": 0, "sp_def": 0, "speed": 0},
+		}}}
+		w := teamRequest(t, h.PatchTeam, http.MethodPatch, teamID, userID, body)
+		assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
+	})
+
+	t.Run("training points summing over 66 returns 422", func(t *testing.T) {
+		body := map[string]any{"slots": []map[string]any{{
+			"slot": 1, "pokemon_id": fx.pokemonID,
+			"training_points": map[string]any{"hp": 3, "attack": 32, "defense": 0, "sp_atk": 0, "sp_def": 0, "speed": 32}, // sums to 67
+		}}}
+		w := teamRequest(t, h.PatchTeam, http.MethodPatch, teamID, userID, body)
+		assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
+	})
+
+	t.Run("training points at exactly 66 total is accepted", func(t *testing.T) {
+		body := map[string]any{"slots": []map[string]any{{
+			"slot": 1, "pokemon_id": fx.pokemonID,
+			"training_points": map[string]any{"hp": 2, "attack": 32, "defense": 0, "sp_atk": 0, "sp_def": 0, "speed": 32},
+		}}}
+		w := teamRequest(t, h.PatchTeam, http.MethodPatch, teamID, userID, body)
+		assert.Equal(t, http.StatusOK, w.Code)
 	})
 }
 

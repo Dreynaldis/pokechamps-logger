@@ -16,6 +16,15 @@ export type AbilityRef = {
 	grants_immunity_type?: string;
 };
 
+export type ItemRef = {
+	id: string;
+	name: string;
+	display_name: string;
+	category: string;
+	short_effect: string;
+	sprite_url: string;
+};
+
 export type MoveRef = {
 	id: string;
 	name: string;
@@ -30,10 +39,19 @@ export type MoveRef = {
 	is_pivot: boolean;
 };
 
+export type StatBlock = { hp: number; attack: number; defense: number; sp_atk: number; sp_def: number; speed: number };
+
 export type PokemonDetail = PokemonSummary & {
-	base_stats: { hp: number; attack: number; defense: number; sp_atk: number; sp_def: number; speed: number };
+	base_stats: StatBlock;
 	abilities: AbilityRef[];
 	moves: MoveRef[];
+};
+
+// Training points: 0-32 per stat, sum <= 66, added 1:1 to the base stat (ADR 009).
+export type TrainingPointsJSON = StatBlock;
+
+export const ZERO_TRAINING_POINTS: TrainingPointsJSON = {
+	hp: 0, attack: 0, defense: 0, sp_atk: 0, sp_def: 0, speed: 0,
 };
 
 export type SlotMove = {
@@ -46,8 +64,9 @@ export type TeamSlot = {
 	slot: number;
 	pokemon: PokemonSummary;
 	ability?: AbilityRef;
-	item?: { id: string; name: string; display_name: string };
+	item?: ItemRef;
 	nature?: string;
+	training_points: TrainingPointsJSON;
 	moves: SlotMove[];
 };
 
@@ -65,7 +84,9 @@ export type DraftSlot = {
 	slot: number; // 1-6
 	pokemon: PokemonDetail | null;
 	abilityID: string | null;
+	itemID: string | null;
 	nature: string | null;
+	trainingPoints: TrainingPointsJSON;
 	moves: Array<DraftMove | null>; // index 0-3 = move slots 1-4
 };
 

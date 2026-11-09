@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { loginWithToken } from '$lib/auth.svelte.js';
+	import { goto } from '$app/navigation';
+	import { loginWithToken, markAuthReady } from '$lib/auth.svelte.js';
 	import { api, setApiToken } from '$lib/api.js';
 
 	let status = $state<'loading' | 'error'>('loading');
@@ -24,9 +25,10 @@
 			const res = await api('/api/v1/auth/me');
 			if (res.ok) {
 				loginWithToken(token, await res.json());
+				markAuthReady();
 				// Clear the token from the URL before navigating
 				history.replaceState(null, '', window.location.pathname);
-				window.location.href = '/teams';
+				goto('/teams');
 				return;
 			}
 		}

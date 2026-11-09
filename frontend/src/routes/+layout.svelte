@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { Snippet } from 'svelte';
-	import { authState, loginWithToken, clearAuth } from '$lib/auth.svelte.js';
+	import { authState, loginWithToken, clearAuth, markAuthReady } from '$lib/auth.svelte.js';
 	import { api, setApiToken, BASE } from '$lib/api.js';
 
 	let { children }: { children: Snippet } = $props();
@@ -17,11 +17,14 @@
 				const me = await api('/api/v1/auth/me');
 				if (me.ok) {
 					loginWithToken(access_token, await me.json());
+					markAuthReady();
 					return;
 				}
 			}
 		} catch {}
-		clearAuth();
+		// Don't clobber a session the OAuth callback page may have set concurrently.
+		if (!authState.user) clearAuth();
+		markAuthReady();
 	});
 
 	async function handleLogout() {

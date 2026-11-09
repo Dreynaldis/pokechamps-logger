@@ -197,7 +197,8 @@ team_slots (
   ability_id      uuid REFERENCES abilities(id),
   item_id         uuid REFERENCES items(id),
   nature          text,
-  training_points jsonb,    -- EV-equivalent; exact shape TBD once Champions UI is confirmed
+  training_points jsonb,    -- {hp,attack,defense,sp_atk,sp_def,speed} ints, 0-32 each, sum <= 66;
+                             -- added 1:1 to the matching base stat, no divisor (see ADR 009)
   created_at      timestamptz,
   UNIQUE (team_id, slot)
 )
@@ -322,11 +323,12 @@ All endpoints require `Authorization: Bearer <access_token>` unless marked **pub
 ```json
 [{
   "slot": 1, "pokemon_id": "uuid", "ability_id": "uuid",
-  "item_id": "uuid", "nature": "timid", "training_points": {},
+  "item_id": "uuid", "nature": "timid",
+  "training_points": { "hp": 0, "attack": 32, "defense": 0, "sp_atk": 0, "sp_def": 2, "speed": 32 },
   "moves": [{ "slot": 1, "move_id": "uuid" }]
 }]
 ```
-Server validates: 6 slots, each with at least 1 move, ability belongs to that Pokemon, moves belong to that Pokemon's learnset.
+Server validates: 6 slots, each with at least 1 move, ability belongs to that Pokemon, moves belong to that Pokemon's learnset, each `training_points` stat in `0-32` and their sum `<= 66`.
 
 ### Matches
 
@@ -428,7 +430,6 @@ On every app boot: check `match-active`, verify against server, show resume bann
 | Question | Blocking |
 |---|---|
 | Hosting provider (Render, Railway, Fly.io, VPS) | Not blocking Phase 1-2 |
-| `training_points` exact schema | Not blocking -- ship as free JSONB, tighten once Champions UI is confirmed |
 | Refresh token: fixed 30-day TTL vs sliding window | Not blocking -- fixed TTL ships first |
 | `our_picks` lead/back role: store in pick phase JSONB or derive from turn 1 | Blocks pick-phase endpoint design |
 

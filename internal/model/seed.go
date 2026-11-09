@@ -4,23 +4,35 @@ import "gorm.io/datatypes"
 
 // Pokemon is a Champions species (310 total).
 type Pokemon struct {
-	ID          string         `gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
-	DexNumber   int            `gorm:"index;not null"`
-	Name        string         `gorm:"uniqueIndex;not null"` // lowercase-hyphenated slug
-	DisplayName string         `gorm:"not null"`
+	ID          string `gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
+	DexNumber   int    `gorm:"index;not null"`
+	Name        string `gorm:"uniqueIndex;not null"` // lowercase-hyphenated slug
+	DisplayName string `gorm:"not null"`
 	SpriteURL   string
 	Types       datatypes.JSON `gorm:"type:jsonb;not null"` // []string
 	BaseStats   datatypes.JSON `gorm:"type:jsonb;not null"` // BaseStatsJSON
 
-	PokemonAbilities []PokemonAbility `gorm:"foreignKey:PokemonID"`
+	PokemonAbilities []PokemonAbility  `gorm:"foreignKey:PokemonID"`
 	Learnset         []PokemonLearnset `gorm:"foreignKey:PokemonID"`
-	MegaForms        []MegaForm       `gorm:"foreignKey:BasePokemonID"`
+	MegaForms        []MegaForm        `gorm:"foreignKey:BasePokemonID"`
 }
 
 func (Pokemon) TableName() string { return "pokemon" }
 
 // BaseStatsJSON is the shape stored in pokemon.base_stats JSONB.
 type BaseStatsJSON struct {
+	HP      int `json:"hp"`
+	Attack  int `json:"attack"`
+	Defense int `json:"defense"`
+	SpAtk   int `json:"sp_atk"`
+	SpDef   int `json:"sp_def"`
+	Speed   int `json:"speed"`
+}
+
+// TrainingPointsJSON is the shape stored in team_slots.training_points JSONB.
+// Each stat is 0-32; the sum across all six must not exceed 66. Added 1:1 to
+// the matching base stat (see ADR 009).
+type TrainingPointsJSON struct {
 	HP      int `json:"hp"`
 	Attack  int `json:"attack"`
 	Defense int `json:"defense"`
@@ -59,8 +71,8 @@ type Move struct {
 	Target             string `gorm:"not null;default:'selected-pokemon'"`
 	ShortEffect        string
 	EffectChance       *int
-	HasSecondaryEffect bool   `gorm:"not null;default:false"`
-	IsPivot            bool   `gorm:"not null;default:false"`
+	HasSecondaryEffect bool `gorm:"not null;default:false"`
+	IsPivot            bool `gorm:"not null;default:false"`
 }
 
 // PokemonLearnset is the Champions-specific learnset join table.
@@ -77,6 +89,7 @@ type Item struct {
 	DisplayName         string `gorm:"not null"`
 	Category            string `gorm:"not null"`
 	ShortEffect         string
+	SpriteURL           string
 	FieldEffectDuration *int
 }
 

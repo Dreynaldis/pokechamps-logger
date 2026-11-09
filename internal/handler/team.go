@@ -8,6 +8,7 @@ import (
 	"github.com/dreynaldis/pokechamps-logger/internal/auth"
 	"github.com/dreynaldis/pokechamps-logger/internal/model"
 	"github.com/go-chi/chi/v5"
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
@@ -48,13 +49,14 @@ type slotMoveOut struct {
 }
 
 type slotOut struct {
-	ID      string        `json:"id"`
-	Slot    int           `json:"slot"`
-	Pokemon pokemonRef    `json:"pokemon"`
-	Ability *abilityRef   `json:"ability,omitempty"`
-	Item    *itemRef      `json:"item,omitempty"`
-	Nature  *string       `json:"nature,omitempty"`
-	Moves   []slotMoveOut `json:"moves"`
+	ID             string                   `json:"id"`
+	Slot           int                      `json:"slot"`
+	Pokemon        pokemonRef               `json:"pokemon"`
+	Ability        *abilityRef              `json:"ability,omitempty"`
+	Item           *itemRef                 `json:"item,omitempty"`
+	Nature         *string                  `json:"nature,omitempty"`
+	TrainingPoints model.TrainingPointsJSON `json:"training_points"`
+	Moves          []slotMoveOut            `json:"moves"`
 }
 
 type teamOut struct {
@@ -74,12 +76,13 @@ type slotMoveInput struct {
 }
 
 type slotInput struct {
-	Slot      int             `json:"slot"`
-	PokemonID string          `json:"pokemon_id"`
-	AbilityID *string         `json:"ability_id"`
-	ItemID    *string         `json:"item_id"`
-	Nature    *string         `json:"nature"`
-	Moves     []slotMoveInput `json:"moves"`
+	Slot           int                       `json:"slot"`
+	PokemonID      string                    `json:"pokemon_id"`
+	AbilityID      *string                   `json:"ability_id"`
+	ItemID         *string                   `json:"item_id"`
+	Nature         *string                   `json:"nature"`
+	TrainingPoints *model.TrainingPointsJSON `json:"training_points"`
+	Moves          []slotMoveInput           `json:"moves"`
 }
 
 // ---------------------------------------------------------------------------
@@ -110,6 +113,9 @@ func toTeamOut(t model.Team, withSlots bool) teamOut {
 		}
 		if s.Item != nil {
 			so.Item = &itemRef{ID: s.Item.ID, Name: s.Item.Name, DisplayName: s.Item.DisplayName}
+		}
+		if len(s.TrainingPoints) > 0 {
+			_ = json.Unmarshal(s.TrainingPoints, &so.TrainingPoints)
 		}
 		so.Moves = make([]slotMoveOut, 0, len(s.Moves))
 		for _, m := range s.Moves {
@@ -250,13 +256,22 @@ func (h *Handler) PatchTeam(w http.ResponseWriter, r *http.Request) {
 
 			// Insert new slots and moves
 			for _, si := range *body.Slots {
+				tp := si.TrainingPoints
+				if tp == nil {
+					tp = &model.TrainingPointsJSON{}
+				}
+				tpJSON, err := json.Marshal(tp)
+				if err != nil {
+					return err
+				}
 				slot := model.TeamSlot{
-					TeamID:    teamID,
-					Slot:      si.Slot,
-					PokemonID: si.PokemonID,
-					AbilityID: si.AbilityID,
-					ItemID:    si.ItemID,
-					Nature:    si.Nature,
+					TeamID:         teamID,
+					Slot:           si.Slot,
+					PokemonID:      si.PokemonID,
+					AbilityID:      si.AbilityID,
+					ItemID:         si.ItemID,
+					Nature:         si.Nature,
+					TrainingPoints: datatypes.JSON(tpJSON),
 				}
 				if err := tx.Create(&slot).Error; err != nil {
 					return err
@@ -371,6 +386,20 @@ func validateSlots(slots []slotInput) error {
 		seen[s.Slot] = true
 		if s.PokemonID == "" {
 			return validationError("invalid slots")
+		}
+		if s.TrainingPoints != nil {
+			tp := s.TrainingPoints
+			vals := []int{tp.HP, tp.Attack, tp.Defense, tp.SpAtk, tp.SpDef, tp.Speed}
+			total := 0
+			for _, v := range vals {
+				if v < 0 || v > 32 {
+					return validationError("invalid slots")
+				}
+				total += v
+			}
+			if total > 66 {
+				return validationError("invalid slots")
+			}
 		}
 		if len(s.Moves) > 4 {
 			return validationError("invalid slots")

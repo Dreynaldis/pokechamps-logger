@@ -18,3 +18,12 @@ export function clearAuth() {
 	authState.user = null;
 	authState.loading = false;
 }
+
+// Resolves once the layout's initial session-restore attempt (success or
+// failure) has finished. Pages that gate on authState.user must await this
+// first, otherwise they race the restore and bounce a logged-in user to /auth.
+let resolveAuthReady: () => void;
+export const authReady = new Promise<void>((resolve) => { resolveAuthReady = resolve; });
+export function markAuthReady() {
+	resolveAuthReady();
+}

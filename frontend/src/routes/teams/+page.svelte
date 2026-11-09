@@ -1,8 +1,19 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { authState } from '$lib/auth.svelte.js';
+	import { goto } from '$app/navigation';
+	import { authState, authReady } from '$lib/auth.svelte.js';
 	import { api } from '$lib/api.js';
-	import type { Team, DraftTeam, DraftSlot, DraftMove, PokemonSummary, PokemonDetail } from '$lib/types.js';
+	import { typeColors, typeSortIndex } from '$lib/typeOrder.js';
+	import { effectiveStats, trainingPointsUsed, TRAINING_POINTS_TOTAL_CAP, TRAINING_POINTS_STAT_CAP, statColors, STAT_SHORT_LABELS } from '$lib/stats.js';
+	import Combobox from '$lib/components/Combobox.svelte';
+	import Select from '$lib/components/Select.svelte';
+	import MoveTypeIcon from '$lib/components/MoveTypeIcon.svelte';
+	import StatSlider from '$lib/components/StatSlider.svelte';
+	import type {
+		Team, DraftTeam, DraftSlot, DraftMove, PokemonSummary, PokemonDetail, ItemRef, AbilityRef, MoveRef,
+		TrainingPointsJSON,
+	} from '$lib/types.js';
+	import { ZERO_TRAINING_POINTS } from '$lib/types.js';
 
 	// ---------------------------------------------------------------------------
 	// State
@@ -13,27 +24,46 @@
 	let draft = $state<DraftTeam | null>(null);
 	let saveStatus = $state<'saved' | 'saving' | 'unsaved'>('saved');
 	let teamsLoading = $state(true);
+	let selectedSlotIdx = $state(0);
 
-	type SlotSearch = { query: string; results: PokemonSummary[]; open: boolean };
-	let slotSearch = $state<SlotSearch[]>(Array.from({ length: 6 }, () => ({ query: '', results: [], open: false })));
 	let slotDetail = $state<Array<PokemonDetail | null>>(Array(6).fill(null));
+	let allItems = $state<ItemRef[]>([]);
+	let allPokemon = $state<PokemonSummary[]>([]);
 
 	let lsTimer: ReturnType<typeof setTimeout>;
 	let serverTimer: ReturnType<typeof setTimeout>;
-	let searchTimers: Array<ReturnType<typeof setTimeout>> = Array(6).fill(0);
 
 	const NATURES = ['Hardy','Lonely','Brave','Adamant','Naughty','Bold','Docile','Relaxed',
 		'Impish','Lax','Timid','Hasty','Serious','Jolly','Naive','Modest','Mild',
 		'Quiet','Bashful','Rash','Calm','Gentle','Sassy','Careful','Quirky'];
+	const NATURE_ITEMS = NATURES.map(n => ({ id: n, label: n }));
+	const STAT_LABELS: Array<{ key: keyof TrainingPointsJSON; label: string }> = [
+		{ key: 'hp', label: 'HP' }, { key: 'attack', label: 'Attack' }, { key: 'defense', label: 'Defense' },
+		{ key: 'sp_atk', label: 'Sp. Atk' }, { key: 'sp_def', label: 'Sp. Def' }, { key: 'speed', label: 'Speed' },
+	];
+	const STAT_MAX = 255; // conventional Pokemon base-stat ceiling, matches Phase 1 verification page
 
 	// ---------------------------------------------------------------------------
 	// Boot
 	// ---------------------------------------------------------------------------
 
 	onMount(async () => {
-		if (!authState.user) { window.location.href = '/auth'; return; }
+		await authReady;
+		if (!authState.user) { goto('/auth'); return; }
 		await loadTeams();
+		await loadItems();
+		await loadPokemon();
 	});
+
+	async function loadItems() {
+		const res = await api('/api/v1/items?limit=200');
+		if (res.ok) allItems = await res.json();
+	}
+
+	async function loadPokemon() {
+		const res = await api('/api/v1/pokemon?limit=300');
+		if (res.ok) allPokemon = await res.json();
+	}
 
 	async function loadTeams() {
 		teamsLoading = true;
@@ -69,7 +99,9 @@
 					slot: s.slot,
 					pokemon_id: s.pokemon!.id,
 					ability_id: s.abilityID ?? undefined,
+					item_id: s.itemID ?? undefined,
 					nature: s.nature ?? undefined,
+					training_points: s.trainingPoints,
 					moves: s.moves
 						.map((m, i) => m ? { slot: i + 1, move_id: m.moveID } : null)
 						.filter(Boolean),
@@ -92,6 +124,7 @@
 
 	async function selectTeam(id: string) {
 		selectedTeamID = id;
+		selectedSlotIdx = 0;
 		const res = await api(`/api/v1/teams/${id}`);
 		if (!res.ok) return;
 		await buildDraft(await res.json());
@@ -99,11 +132,11 @@
 
 	async function buildDraft(team: Team) {
 		const emptySlots: DraftSlot[] = Array.from({ length: 6 }, (_, i) => ({
-			slot: i + 1, pokemon: null, abilityID: null, nature: null,
+			slot: i + 1, pokemon: null, abilityID: null, itemID: null, nature: null,
+			trainingPoints: { ...ZERO_TRAINING_POINTS },
 			moves: [null, null, null, null],
 		}));
 
-		const newSearch: SlotSearch[] = Array.from({ length: 6 }, () => ({ query: '', results: [], open: false }));
 		const newDetail: Array<PokemonDetail | null> = Array(6).fill(null);
 
 		for (const s of team.slots ?? []) {
@@ -111,7 +144,6 @@
 			const detailRes = await api(`/api/v1/pokemon/${s.pokemon.name}`);
 			const detail: PokemonDetail = detailRes.ok ? await detailRes.json() : s.pokemon as unknown as PokemonDetail;
 			newDetail[idx] = detail;
-			newSearch[idx].query = s.pokemon.display_name;
 
 			const moves: Array<DraftMove | null> = [null, null, null, null];
 			for (const m of s.moves) {
@@ -119,11 +151,13 @@
 			}
 			emptySlots[idx] = {
 				slot: s.slot, pokemon: detail,
-				abilityID: s.ability?.id ?? null, nature: s.nature ?? null, moves,
+				abilityID: s.ability?.id ?? null, itemID: s.item?.id ?? null,
+				nature: s.nature ?? null,
+				trainingPoints: s.training_points ?? { ...ZERO_TRAINING_POINTS },
+				moves,
 			};
 		}
 
-		slotSearch = newSearch;
 		slotDetail = newDetail;
 		draft = { id: team.id, name: team.name, slots: emptySlots };
 		saveStatus = 'saved';
@@ -158,29 +192,16 @@
 	// Slot editing -- each mutator calls markDirty() explicitly
 	// ---------------------------------------------------------------------------
 
-	async function onPokemonSearch(idx: number) {
-		const q = slotSearch[idx].query;
-		clearTimeout(searchTimers[idx]);
-		if (!q) { slotSearch[idx].results = []; slotSearch[idx].open = false; return; }
-		searchTimers[idx] = setTimeout(async () => {
-			const res = await api(`/api/v1/pokemon?q=${encodeURIComponent(q)}&limit=8`);
-			if (res.ok) {
-				slotSearch[idx].results = await res.json();
-				slotSearch[idx].open = slotSearch[idx].results.length > 0;
-			}
-		}, 200);
-	}
-
-	async function selectPokemon(idx: number, p: PokemonSummary) {
-		slotSearch[idx].query = p.display_name;
-		slotSearch[idx].open = false;
+	async function selectPokemon(idx: number, p: PokemonSummary | null) {
+		if (!p) return;
 		const detailRes = await api(`/api/v1/pokemon/${p.name}`);
 		if (!detailRes.ok) return;
 		const detail: PokemonDetail = await detailRes.json();
 		slotDetail[idx] = detail;
 		draft!.slots[idx] = {
 			slot: idx + 1, pokemon: detail,
-			abilityID: detail.abilities[0]?.id ?? null, nature: null,
+			abilityID: detail.abilities[0]?.id ?? null, itemID: null, nature: null,
+			trainingPoints: { ...ZERO_TRAINING_POINTS },
 			moves: [null, null, null, null],
 		};
 		draft = { ...draft! };
@@ -188,30 +209,50 @@
 	}
 
 	function clearSlot(idx: number) {
-		slotSearch[idx] = { query: '', results: [], open: false };
 		slotDetail[idx] = null;
-		draft!.slots[idx] = { slot: idx + 1, pokemon: null, abilityID: null, nature: null, moves: [null, null, null, null] };
+		draft!.slots[idx] = {
+			slot: idx + 1, pokemon: null, abilityID: null, itemID: null, nature: null,
+			trainingPoints: { ...ZERO_TRAINING_POINTS }, moves: [null, null, null, null],
+		};
 		draft = { ...draft! };
 		markDirty();
 	}
 
-	function setAbility(idx: number, abilityID: string) {
-		draft!.slots[idx] = { ...draft!.slots[idx], abilityID: abilityID || null };
+	function setAbility(idx: number, a: AbilityRef | null) {
+		draft!.slots[idx] = { ...draft!.slots[idx], abilityID: a?.id ?? null };
 		draft = { ...draft! };
 		markDirty();
 	}
 
-	function setNature(idx: number, nature: string) {
-		draft!.slots[idx] = { ...draft!.slots[idx], nature: nature || null };
+	function setItem(idx: number, i: ItemRef | null) {
+		draft!.slots[idx] = { ...draft!.slots[idx], itemID: i?.id ?? null };
 		draft = { ...draft! };
 		markDirty();
 	}
 
-	function setMove(idx: number, moveSlot: number, moveID: string) {
-		const move = slotDetail[idx]?.moves.find(m => m.id === moveID);
+	function setNature(idx: number, n: { id: string; label: string } | null) {
+		draft!.slots[idx] = { ...draft!.slots[idx], nature: n?.id ?? null };
+		draft = { ...draft! };
+		markDirty();
+	}
+
+	function setMove(idx: number, moveSlot: number, m: MoveRef | null) {
 		const moves = [...draft!.slots[idx].moves];
-		moves[moveSlot] = moveID ? { slot: moveSlot + 1, moveID, displayName: move?.display_name ?? '' } : null;
+		moves[moveSlot] = m ? { slot: moveSlot + 1, moveID: m.id, displayName: m.display_name } : null;
 		draft!.slots[idx] = { ...draft!.slots[idx], moves };
+		draft = { ...draft! };
+		markDirty();
+	}
+
+	function setTrainingPoint(idx: number, stat: keyof TrainingPointsJSON, value: number) {
+		const current = draft!.slots[idx].trainingPoints;
+		// Defensive clamp at the source of truth -- don't rely solely on the slider's own
+		// clamping, since drag/direct-input can report values outside the computed max.
+		const others = trainingPointsUsed(current) - current[stat];
+		const maxAllowed = Math.min(TRAINING_POINTS_STAT_CAP, TRAINING_POINTS_TOTAL_CAP - others);
+		const clamped = Math.max(0, Math.min(maxAllowed, Math.round(value)));
+		const tp = { ...current, [stat]: clamped };
+		draft!.slots[idx] = { ...draft!.slots[idx], trainingPoints: tp };
 		draft = { ...draft! };
 		markDirty();
 	}
@@ -220,13 +261,13 @@
 		markDirty();
 	}
 
-	const typeColors: Record<string, string> = {
-		normal:'#A8A878', fire:'#F08030', water:'#6890F0', electric:'#F8D030',
-		grass:'#78C850', ice:'#98D8D8', fighting:'#C03028', poison:'#A040A0',
-		ground:'#E0C068', flying:'#A890F0', psychic:'#F85888', bug:'#A8B820',
-		rock:'#B8A038', ghost:'#705898', dragon:'#7038F8', dark:'#705848',
-		steel:'#B8B8D0', fairy:'#EE99AC',
-	};
+	function sortedMoves(detail: PokemonDetail | null): MoveRef[] {
+		if (!detail) return [];
+		return [...detail.moves].sort((a, b) => {
+			const ti = typeSortIndex(a.type) - typeSortIndex(b.type);
+			return ti !== 0 ? ti : a.display_name.localeCompare(b.display_name);
+		});
+	}
 </script>
 
 <div class="page">
@@ -289,111 +330,209 @@
 				</div>
 			</div>
 
-			<!-- 6 Slots -->
-			<div class="slots-grid">
-				{#each draft.slots as slot, idx}
-					{@const detail = slotDetail[idx]}
-					<div class="slot-card">
-						<div class="slot-number">Slot {slot.slot}</div>
+			<!-- Master-detail: slot list (left) + slot editor (right) -->
+			<div class="master-detail">
+				<div class="slot-list-panel">
+					{#each draft.slots as slot, idx}
+						{@const detail = slotDetail[idx]}
+						{@const stats = detail ? effectiveStats(detail.base_stats, slot.trainingPoints) : null}
+						{@const abilityName = detail?.abilities.find(a => a.id === slot.abilityID)?.display_name}
+						{@const itemName = allItems.find(i => i.id === slot.itemID)?.display_name}
+						{@const moveNames = slot.moves.filter((m): m is DraftMove => m !== null).map(m => m.displayName)}
+						<button
+							class="slot-row"
+							class:selected={selectedSlotIdx === idx}
+							onclick={() => selectedSlotIdx = idx}
+						>
+							{#if slot.pokemon}
+								<img class="sprite-md" src={slot.pokemon.sprite_url} alt="" loading="lazy" />
+								<div class="slot-row-info">
+									<span class="slot-row-name">{slot.pokemon.display_name}</span>
+									<div class="types-inline">
+										{#each slot.pokemon.types as t}
+											<span class="type-pip" style="background:{typeColors[t] ?? '#888'}">{t}</span>
+										{/each}
+									</div>
 
-						<!-- Pokemon search -->
-						<div class="field-group">
-							<span class="field-label">Pokemon</span>
-							<div class="autocomplete">
-								<div class="autocomplete-input-row">
-									<input
-										class="field-input"
-										bind:value={slotSearch[idx].query}
-										oninput={() => onPokemonSearch(idx)}
-										onfocus={() => { if (slotSearch[idx].results.length) slotSearch[idx].open = true; }}
-										onblur={() => setTimeout(() => { slotSearch[idx].open = false; }, 150)}
-										placeholder="Search Pokemon..."
-										autocomplete="off"
-									/>
-									{#if slot.pokemon}
-										<button class="clear-btn" onclick={() => clearSlot(idx)}>✕</button>
+									<div class="slot-row-meta"><span class="slot-row-meta-label">Ability:</span> {abilityName ?? '--'}</div>
+									<div class="slot-row-meta"><span class="slot-row-meta-label">Item:</span> {itemName ?? '--'}</div>
+									<div class="slot-row-meta">
+										<span class="slot-row-meta-label">Moves:</span> {moveNames.length ? moveNames.join(', ') : '--'}
+									</div>
+
+									{#if stats}
+										<div class="mini-stat-graph">
+											{#each STAT_LABELS as { key }}
+												<div class="mini-stat-row" title="{STAT_SHORT_LABELS[key]} {stats[key]}">
+													<span class="mini-stat-label" style="color:{statColors[key]}">{STAT_SHORT_LABELS[key]}</span>
+													<div class="mini-stat-bar-bg">
+														<div
+															class="mini-stat-bar"
+															style="width:{Math.min(100, (stats[key] / STAT_MAX) * 100)}%; background:{statColors[key]}"
+														></div>
+													</div>
+													<span class="mini-stat-val">{stats[key]}</span>
+												</div>
+											{/each}
+										</div>
 									{/if}
 								</div>
+							{:else}
+								<span class="slot-row-empty">Slot {slot.slot} -- empty</span>
+							{/if}
+						</button>
+					{/each}
+				</div>
 
-								{#if slotSearch[idx].open && slotSearch[idx].results.length}
-									<ul class="dropdown">
-										{#each slotSearch[idx].results as p}
-											<li>
-												<button onmousedown={() => selectPokemon(idx, p)}>
-													<span>{p.display_name}</span>
-													<span class="types-inline">
-														{#each p.types as t}
-															<span class="type-pip" style="background:{typeColors[t] ?? '#888'}">{t}</span>
-														{/each}
-													</span>
-												</button>
-											</li>
+				<div class="slot-detail-panel">
+				{#each [selectedSlotIdx] as idx (idx)}
+					{@const slot = draft.slots[idx]}
+					{@const detail = slotDetail[idx]}
+
+					<div class="detail-species-row">
+						<span class="field-label">Slot {slot.slot} -- Species</span>
+						<div class="detail-species-picker">
+							<Combobox
+								items={allPokemon}
+								getLabel={(p: PokemonSummary) => p.display_name}
+								getValue={(p: PokemonSummary) => p.id}
+								value={slot.pokemon?.id ?? null}
+								onSelect={(p) => selectPokemon(idx, p)}
+								placeholder="Search Pokemon..."
+							>
+								{#snippet item(p: PokemonSummary)}
+									<img class="sprite-sm" src={p.sprite_url} alt="" loading="lazy" />
+									<span class="cb-item-name">{p.display_name}</span>
+									<span class="types-inline">
+										{#each p.types as t}
+											<span class="type-pip" style="background:{typeColors[t] ?? '#888'}">{t}</span>
 										{/each}
-									</ul>
-								{/if}
-							</div>
-
+									</span>
+								{/snippet}
+							</Combobox>
 							{#if slot.pokemon}
+								<button class="clear-btn" onclick={() => clearSlot(idx)}>✕ Clear</button>
+							{/if}
+						</div>
+					</div>
+
+					{#if slot.pokemon && detail}
+						{@const summaryStats = effectiveStats(detail.base_stats, slot.trainingPoints)}
+						<div class="detail-body">
+							<div class="selected-pokemon-row">
+								<img class="sprite-lg" src={slot.pokemon.sprite_url} alt={slot.pokemon.display_name} loading="lazy" />
 								<div class="types-row">
 									{#each slot.pokemon.types as t}
 										<span class="type-badge" style="background:{typeColors[t] ?? '#888'}">{t}</span>
 									{/each}
 								</div>
-							{/if}
-						</div>
+							</div>
 
-						{#if slot.pokemon && detail}
-							<!-- Ability -->
+							<div class="stat-graph">
+								{#each STAT_LABELS as { key, label }}
+									<div class="stat-graph-row">
+										<span class="stat-graph-label" style="color:{statColors[key]}">{label}</span>
+										<span class="stat-graph-val">{summaryStats[key]}</span>
+										<div class="stat-graph-bar-bg">
+											<div
+												class="stat-graph-bar"
+												style="width:{Math.min(100, (summaryStats[key] / STAT_MAX) * 100)}%; background:{statColors[key]}"
+											></div>
+										</div>
+									</div>
+								{/each}
+								<div class="stat-graph-total">
+									Total: {STAT_LABELS.reduce((sum, { key }) => sum + summaryStats[key], 0)}
+								</div>
+							</div>
+
 							<div class="field-group">
 								<span class="field-label">Ability</span>
-								<select
-									class="field-select"
-									value={slot.abilityID ?? ''}
-									onchange={e => setAbility(idx, (e.target as HTMLSelectElement).value)}
-								>
-									<option value="">-- none --</option>
-									{#each detail.abilities as a}
-										<option value={a.id}>{a.display_name}</option>
-									{/each}
-								</select>
+								<Select
+									items={detail.abilities}
+									getLabel={(a: AbilityRef) => a.display_name}
+									getValue={(a: AbilityRef) => a.id}
+									value={slot.abilityID}
+									onSelect={(a) => setAbility(idx, a)}
+									placeholder="-- none --"
+								/>
 							</div>
 
-							<!-- Nature -->
+							<div class="field-group">
+								<span class="field-label">Held Item</span>
+								<Combobox
+									items={allItems}
+									getLabel={(i: ItemRef) => i.display_name}
+									getValue={(i: ItemRef) => i.id}
+									value={slot.itemID}
+									onSelect={(i) => setItem(idx, i)}
+									placeholder="Search items..."
+								>
+									{#snippet item(i: ItemRef)}
+										<img class="sprite-sm" src={i.sprite_url} alt="" loading="lazy" />
+										<span class="cb-item-name">{i.display_name}</span>
+									{/snippet}
+								</Combobox>
+							</div>
+
 							<div class="field-group">
 								<span class="field-label">Nature</span>
-								<select
-									class="field-select"
-									value={slot.nature ?? ''}
-									onchange={e => setNature(idx, (e.target as HTMLSelectElement).value)}
-								>
-									<option value="">-- none --</option>
-									{#each NATURES as n}
-										<option value={n}>{n}</option>
-									{/each}
-								</select>
+								<Select
+									items={NATURE_ITEMS}
+									getLabel={(n) => n.label}
+									getValue={(n) => n.id}
+									value={slot.nature}
+									onSelect={(n) => setNature(idx, n)}
+									placeholder="-- none --"
+								/>
 							</div>
 
-							<!-- Moves -->
 							<div class="field-group">
 								<span class="field-label">Moves</span>
 								<div class="moves-list">
 									{#each [0, 1, 2, 3] as mi}
-										<select
-											class="field-select move-select"
-											value={slot.moves[mi]?.moveID ?? ''}
-											onchange={e => setMove(idx, mi, (e.target as HTMLSelectElement).value)}
+										<Combobox
+											items={sortedMoves(detail)}
+											getLabel={(m: MoveRef) => m.display_name}
+											getValue={(m: MoveRef) => m.id}
+											value={slot.moves[mi]?.moveID ?? null}
+											onSelect={(m) => setMove(idx, mi, m)}
+											placeholder={`Move ${mi + 1}`}
 										>
-											<option value="">Move {mi + 1}</option>
-											{#each detail.moves as m}
-												<option value={m.id}>{m.display_name} ({m.type})</option>
-											{/each}
-										</select>
+											{#snippet item(m: MoveRef)}
+												<MoveTypeIcon type={m.type} />
+												<span class="cb-item-name">{m.display_name}</span>
+											{/snippet}
+										</Combobox>
 									{/each}
 								</div>
 							</div>
-						{/if}
-					</div>
+
+							<div class="field-group">
+								<span class="field-label">
+									Training Points ({trainingPointsUsed(slot.trainingPoints)}/{TRAINING_POINTS_TOTAL_CAP})
+								</span>
+								<div class="stat-sliders">
+									{#each STAT_LABELS as { key, label }}
+										{@const used = trainingPointsUsed(slot.trainingPoints)}
+										{@const remaining = TRAINING_POINTS_TOTAL_CAP - used + slot.trainingPoints[key]}
+										<StatSlider
+											{label}
+											color={statColors[key]}
+											base={detail.base_stats[key]}
+											value={slot.trainingPoints[key]}
+											{remaining}
+											onChange={(v) => setTrainingPoint(idx, key, v)}
+										/>
+									{/each}
+								</div>
+							</div>
+						</div>
+					{:else}
+						<div class="empty-state small">Pick a Pokemon for this slot.</div>
+					{/if}
 				{/each}
+				</div>
 			</div>
 		{/if}
 	</div>
@@ -430,7 +569,7 @@
 	}
 
 	/* Builder area */
-	.builder { overflow-y: auto; padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem; }
+	.builder { overflow: hidden; padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem; min-height: 0; }
 
 	.empty-state {
 		display: flex; align-items: center; justify-content: center;
@@ -459,61 +598,108 @@
 	.btn-sm:disabled { opacity: 0.4; cursor: not-allowed; }
 	.btn-sm.danger:hover { border-color: #7f1d1d; color: #f87171; }
 
-	/* Slot grid */
-	.slots-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.875rem; }
+	/* Master-detail */
+	.master-detail { display: grid; grid-template-columns: 280px 1fr; gap: 0.875rem; flex: 1; min-height: 0; }
 
-	.slot-card {
-		background: #12121f; border: 1px solid #1e1e35; border-radius: 10px;
-		padding: 0.875rem; display: flex; flex-direction: column; gap: 0.625rem;
+	.slot-list-panel {
+		display: flex; flex-direction: column; gap: 0.5rem; overflow-y: auto;
+		border-right: 1px solid #1e1e35; padding-right: 0.875rem;
 	}
-	.slot-number { font-size: 0.7rem; color: #555; text-transform: uppercase; letter-spacing: 0.06em; }
+	.slot-row {
+		display: flex; align-items: flex-start; gap: 0.6rem; text-align: left;
+		background: #12121f; border: 1px solid #1e1e35; border-radius: 10px;
+		padding: 0.6rem 0.75rem; cursor: pointer; color: #ccc;
+	}
+	.slot-row:hover { border-color: #555; }
+	.slot-row.selected { border-color: #4f46e5; background: #161628; }
+	.slot-row-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+	.slot-row-name { font-size: 0.85rem; color: #e0e0e0; font-weight: 600; }
+
+	.slot-row-meta {
+		font-size: 0.68rem; color: #999; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+	}
+	.slot-row-meta-label { color: #666; }
+
+	.mini-stat-graph { display: flex; flex-direction: column; gap: 1px; margin-top: 2px; }
+	.mini-stat-row { display: grid; grid-template-columns: 20px 1fr 22px; align-items: center; gap: 4px; }
+	.mini-stat-label { font-size: 0.55rem; font-weight: 700; line-height: 1; }
+	.mini-stat-bar-bg { background: #2a2a45; border-radius: 2px; height: 3px; }
+	.mini-stat-bar { border-radius: 2px; height: 3px; transition: width 0.3s ease-out; }
+	.mini-stat-val { font-size: 0.6rem; color: #999; text-align: right; }
+	.slot-row-empty { font-size: 0.8rem; color: #555; }
+
+	.slot-detail-panel {
+		display: flex; flex-direction: column; gap: 0.875rem; overflow-y: auto; min-height: 0;
+	}
+	.detail-species-row { display: flex; flex-direction: column; gap: 0.3rem; }
+	.detail-species-picker { display: flex; gap: 0.35rem; align-items: center; }
+	.detail-species-picker :global(.cb-input) { flex: 1; }
+
+	.detail-body {
+		display: flex; flex-direction: column; gap: 0.75rem;
+		background: #12121f; border: 1px solid #1e1e35; border-radius: 10px; padding: 0.875rem;
+	}
 
 	.field-group { display: flex; flex-direction: column; gap: 0.3rem; }
 	.field-label { font-size: 0.72rem; color: #666; }
-	.field-input, .field-select {
-		padding: 0.4rem 0.55rem; border-radius: 6px; border: 1px solid #2a2a45;
-		background: #0f0f1a; color: #e0e0e0; font-size: 0.82rem; width: 100%;
-	}
-	.field-input:focus, .field-select:focus { outline: none; border-color: #4f46e5; }
-	.field-select { cursor: pointer; }
 
-	/* Autocomplete */
-	.autocomplete { position: relative; }
-	.autocomplete-input-row { display: flex; gap: 0.35rem; }
-	.autocomplete-input-row .field-input { flex: 1; }
 	.clear-btn {
 		background: transparent; border: 1px solid #2a2a45; border-radius: 5px;
-		color: #666; cursor: pointer; padding: 0 0.4rem; font-size: 0.75rem;
+		color: #666; cursor: pointer; padding: 0.3rem 0.5rem; font-size: 0.75rem; white-space: nowrap;
 	}
 	.clear-btn:hover { color: #f87171; border-color: #7f1d1d; }
 
-	.dropdown {
-		position: absolute; top: calc(100% + 3px); left: 0; right: 0; z-index: 20;
-		background: #1a1a2e; border: 1px solid #2a2a45; border-radius: 7px;
-		list-style: none; overflow: hidden; max-height: 200px; overflow-y: auto;
+	.cb-item-name { flex: 1; }
+	.sprite-sm { width: 24px; height: 24px; object-fit: contain; flex-shrink: 0; }
+	.sprite-md { width: 44px; height: 44px; object-fit: contain; flex-shrink: 0; }
+	.sprite-lg { width: 48px; height: 48px; object-fit: contain; flex-shrink: 0; }
+	.selected-pokemon-row { display: flex; align-items: center; gap: 0.5rem; }
+
+	/* Stat graph -- horizontal bars, colored per stat, same pattern as Phase 1 verification page */
+	.stat-graph {
+		display: flex; flex-direction: column; gap: 0.3rem;
+		background: #0f0f1a; border: 1px solid #1e1e35; border-radius: 8px; padding: 0.75rem 0.875rem;
 	}
-	.dropdown li button {
-		width: 100%; display: flex; align-items: center; justify-content: space-between;
-		padding: 0.45rem 0.65rem; background: transparent; border: none; color: #ccc;
-		cursor: pointer; font-size: 0.82rem; text-align: left;
+	.stat-graph-row { display: grid; grid-template-columns: 60px 32px 1fr; align-items: center; gap: 0.5rem; }
+	.stat-graph-label { font-size: 0.72rem; font-weight: 600; }
+	.stat-graph-val { font-size: 0.78rem; font-weight: 600; color: #e0e0e0; text-align: right; }
+	.stat-graph-bar-bg { background: #2a2a45; border-radius: 4px; height: 8px; }
+	.stat-graph-bar { border-radius: 4px; height: 8px; transition: width 0.3s ease-out; }
+	.stat-graph-total {
+		margin-top: 0.2rem; padding-top: 0.4rem; border-top: 1px solid #1e1e35;
+		font-size: 0.75rem; color: #999; text-align: right;
 	}
-	.dropdown li button:hover { background: #2a2a45; color: #fff; }
 
 	.types-inline { display: flex; gap: 3px; }
 	.type-pip {
 		padding: 1px 5px; border-radius: 8px; font-size: 0.65rem;
 		font-weight: 600; color: #fff; text-transform: capitalize;
+		text-shadow: 0 0 2px rgba(0, 0, 0, 0.85), 0 1px 1px rgba(0, 0, 0, 0.85);
 	}
 
-	.types-row { display: flex; gap: 4px; margin-top: 2px; }
+	.types-row { display: flex; gap: 4px; }
 	.type-badge {
 		display: inline-block; padding: 1px 8px; border-radius: 10px;
 		font-size: 0.72rem; font-weight: 600; color: #fff; text-transform: capitalize;
+		text-shadow: 0 0 2px rgba(0, 0, 0, 0.85), 0 1px 1px rgba(0, 0, 0, 0.85);
 	}
 
 	.moves-list { display: flex; flex-direction: column; gap: 0.3rem; }
-	.move-select { font-size: 0.78rem; }
+
+	.stat-sliders { display: flex; flex-direction: column; gap: 0.25rem; }
+
+	.empty-state.small { height: auto; padding: 2rem 0; }
 
 	.p-sm { padding: 0.5rem 0.875rem; }
 	.muted { color: #666; font-size: 0.85rem; }
+
+	/* Responsive: below 900px, stack slot list above the detail panel */
+	@media (max-width: 900px) {
+		.master-detail { grid-template-columns: 1fr; }
+		.slot-list-panel {
+			flex-direction: row; overflow-x: auto; overflow-y: hidden;
+			border-right: none; border-bottom: 1px solid #1e1e35; padding-right: 0; padding-bottom: 0.5rem;
+		}
+		.slot-row { flex-shrink: 0; min-width: 200px; }
+	}
 </style>

@@ -75,13 +75,13 @@ type enrichedAbility struct {
 }
 
 type overrideMovePatch struct {
-	Name  string          `json:"name"`
-	Patch map[string]any  `json:"patch"`
+	Name  string         `json:"name"`
+	Patch map[string]any `json:"patch"`
 }
 
 type overrideAbilityPatch struct {
-	Name  string          `json:"name"`
-	Patch map[string]any  `json:"patch"`
+	Name  string         `json:"name"`
+	Patch map[string]any `json:"patch"`
 }
 
 type overrideMegaForm struct {
@@ -91,10 +91,28 @@ type overrideMegaForm struct {
 	SpriteURL   string `json:"sprite_url"`
 }
 
+type overrideItemPatch struct {
+	Name  string         `json:"name"`
+	Patch map[string]any `json:"patch"`
+}
+
 type overrides struct {
-	MovePatches     []overrideMovePatch    `json:"move_patches"`
-	AbilityPatches  []overrideAbilityPatch `json:"ability_patches"`
-	MegaForms       []overrideMegaForm     `json:"mega_forms"`
+	MovePatches    []overrideMovePatch    `json:"move_patches"`
+	AbilityPatches []overrideAbilityPatch `json:"ability_patches"`
+	MegaForms      []overrideMegaForm     `json:"mega_forms"`
+	Items          []overrideItemPatch    `json:"items"`
+}
+
+type rawItem struct {
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+	Description string `json:"description"`
+	SpriteURL   string `json:"sprite_url"`
+	Category    string `json:"category"`
+}
+
+type rawItemsOutput struct {
+	Items []rawItem `json:"items"`
 }
 
 func main() {
@@ -110,6 +128,7 @@ func main() {
 	raw := mustLoadJSON[rawOutput]("seed/pokebase-raw.json")
 	enrichedMoves := mustLoadJSON[[]enrichedMove]("seed/moves-enriched.json")
 	enrichedAbilities := mustLoadJSON[[]enrichedAbility]("seed/abilities-enriched.json")
+	rawItems := mustLoadJSON[rawItemsOutput]("seed/items-raw.json")
 	ov := mustLoadJSON[overrides]("seed/champions-overrides.json")
 
 	// Build lookup maps
@@ -128,6 +147,10 @@ func main() {
 	abilityPatchMap := make(map[string]map[string]any, len(ov.AbilityPatches))
 	for _, p := range ov.AbilityPatches {
 		abilityPatchMap[p.Name] = p.Patch
+	}
+	itemPatchMap := make(map[string]map[string]any, len(ov.Items))
+	for _, p := range ov.Items {
+		itemPatchMap[p.Name] = p.Patch
 	}
 
 	err = db.Transaction(func(tx *gorm.DB) error {
@@ -151,7 +174,7 @@ func main() {
 		allMoves := collectMoves(raw.Pokemon, moveEnrichMap, movePatchMap)
 		for _, m := range allMoves {
 			if err := tx.Clauses(clause.OnConflict{
-				Columns:   []clause.Column{{Name: "name"}},
+				Columns: []clause.Column{{Name: "name"}},
 				DoUpdates: clause.AssignmentColumns([]string{
 					"display_name", "type", "category", "power", "accuracy", "pp",
 					"priority", "target", "short_effect", "effect_chance",
@@ -219,9 +242,58 @@ func main() {
 			}
 		}
 
-		// 6. Mega forms (need item IDs -- items seeded separately; skip if item not found)
-		log.Println("skipping mega forms (items not seeded yet in Phase 1)")
-		_ = pokemonIDMap
+		// 6. Upsert items
+		log.Println("upserting items...")
+		itemIDMap := make(map[string]string, len(rawItems.Items))
+		for _, ri := range rawItems.Items {
+			it := model.Item{
+				Name:        ri.Name,
+				DisplayName: ri.DisplayName,
+				Category:    ri.Category,
+				ShortEffect: ri.Description,
+				SpriteURL:   ri.SpriteURL,
+			}
+			if patch, ok := itemPatchMap[ri.Name]; ok {
+				if v, ok := patch["field_effect_duration"].(float64); ok {
+					d := int(v)
+					it.FieldEffectDuration = &d
+				}
+			}
+			if err := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "name"}},
+				DoUpdates: clause.AssignmentColumns([]string{"display_name", "category", "short_effect", "sprite_url", "field_effect_duration"}),
+			}).Create(&it).Error; err != nil {
+				return err
+			}
+			itemIDMap[it.Name] = it.ID
+		}
+
+		// 7. Mega forms (need both Pokemon and item IDs)
+		log.Println("upserting mega forms...")
+		for _, mf := range ov.MegaForms {
+			baseID, ok := pokemonIDMap[mf.BasePokemon]
+			if !ok {
+				log.Printf("  WARN: mega form base pokemon %q not found, skipping", mf.BasePokemon)
+				continue
+			}
+			itemID, ok := itemIDMap[mf.Item]
+			if !ok {
+				log.Printf("  WARN: mega form item %q not found, skipping", mf.Item)
+				continue
+			}
+			form := model.MegaForm{
+				BasePokemonID: baseID,
+				ItemID:        itemID,
+				FormName:      mf.FormName,
+				SpriteURL:     mf.SpriteURL,
+			}
+			if err := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "base_pokemon_id"}, {Name: "item_id"}},
+				DoUpdates: clause.AssignmentColumns([]string{"form_name", "sprite_url"}),
+			}).Create(&form).Error; err != nil {
+				return err
+			}
+		}
 
 		log.Println("transaction complete")
 		return nil

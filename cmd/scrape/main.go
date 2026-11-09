@@ -84,6 +84,7 @@ var dexRe = regexp.MustCompile(`#<!-- -->(\d+)`)
 
 func main() {
 	debug := flag.Bool("debug", false, "save raw HTML to seed/debug/ for selector inspection, then exit")
+	itemsOnly := flag.Bool("items-only", false, "scrape only the items catalog, skip Pokemon")
 	flag.Parse()
 
 	if *debug {
@@ -95,6 +96,19 @@ func main() {
 	client := &http.Client{Timeout: 30 * time.Second}
 	throttle := time.NewTicker(rateLimit)
 	defer throttle.Stop()
+
+	if *itemsOnly {
+		log.Println("scraping items catalog...")
+		items, err := scrapeItems(client)
+		if err != nil {
+			log.Fatalf("scrape items: %v", err)
+		}
+		if err := writeItemsJSON("seed/items-raw.json", items); err != nil {
+			log.Fatalf("write items: %v", err)
+		}
+		log.Printf("done. wrote %d items to seed/items-raw.json", len(items.Items))
+		return
+	}
 
 	log.Println("collecting Pokemon slugs from list pages...")
 	slugs, err := collectSlugs(client, throttle, *debug)
@@ -155,6 +169,17 @@ func main() {
 	}
 
 	log.Printf("done. wrote %d Pokemon to seed/pokebase-raw.json", len(pokemon))
+
+	<-throttle.C
+	log.Println("scraping items catalog...")
+	items, err := scrapeItems(client)
+	if err != nil {
+		log.Fatalf("scrape items: %v", err)
+	}
+	if err := writeItemsJSON("seed/items-raw.json", items); err != nil {
+		log.Fatalf("write items: %v", err)
+	}
+	log.Printf("done. wrote %d items to seed/items-raw.json", len(items.Items))
 }
 
 func collectSlugs(client *http.Client, throttle *time.Ticker, debug bool) ([]string, error) {
